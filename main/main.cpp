@@ -1,6 +1,6 @@
 ﻿#include <SFML/Graphics.hpp>
-#include <iostream>
-#include <cmath>
+#include <vector>
+#include <cmath>   // Для std::sqrt
 #include <cstdlib> // Для rand() и srand()
 #include <ctime>   // Для time()
 #include <windows.h>
@@ -8,101 +8,132 @@
 
 const int WINDOW_WIDTH = GetSystemMetrics(SM_CXSCREEN);
 const int WINDOW_HEIGHT = GetSystemMetrics(SM_CYSCREEN);
-const float BALL_RADIUS = 50.f;
+const float RESTITUTION_COEFFICIENT = 0.8f; // Коэффициент восстановления
 
 struct Ball 
 {
-	sf::CircleShape shape;
-	sf::Vector2f velocity;
+    sf::CircleShape shape;
+    sf::Vector2f velocity;
 
-	Ball(float x, float y, float vx, float vy, sf::Color color) 
-	{
-		shape.setRadius(BALL_RADIUS);
-		shape.setOrigin(BALL_RADIUS, BALL_RADIUS);
-		shape.setPosition(x, y);
-		shape.setFillColor(color);
-		velocity = sf::Vector2f(vx, vy);
-	}
+    Ball(float x, float y, float radius, sf::Color color)
+    {
+        shape.setRadius(radius);
+        shape.setOrigin(radius, radius);
+        shape.setPosition(x, y);
+        shape.setFillColor(color);
+        velocity = sf::Vector2f((rand() % 5 + 1) * (rand() % 2 == 0 ? 1 : -1), (rand() % 5 + 1) * (rand() % 2 == 0 ? 1 : -1));
+    }
 
-	void update() 
-	{
-		shape.move(velocity);
+    void update()
+    {
+        shape.move(velocity);
 
-		// Проверка на столкновение со стенами
-		if (shape.getPosition().x + BALL_RADIUS > WINDOW_WIDTH || shape.getPosition().x - BALL_RADIUS < 0) 
-		{
-			velocity.x = -velocity.x; // Отражение по оси X
-		}
-		if (shape.getPosition().y + BALL_RADIUS > WINDOW_HEIGHT || shape.getPosition().y - BALL_RADIUS < 0) 
-		{
-			velocity.y = -velocity.y; // Отражение по оси Y
-		}
-	}
+        // Проверка на столкновение со стенами
+        if (shape.getPosition().x + shape.getRadius() > WINDOW_WIDTH || shape.getPosition().x - shape.getRadius() < 0) 
+        {
+            velocity.x = -velocity.x;
+        }
+        if (shape.getPosition().y + shape.getRadius() > WINDOW_HEIGHT || shape.getPosition().y - shape.getRadius() < 0) 
+        {
+            velocity.y = -velocity.y;
+        }
+    }
 
-	void draw(sf::RenderWindow& window) 
-	{
-		window.draw(shape);
-	}
+    void draw(sf::RenderWindow& window)
+    {
+        window.draw(shape);
+    }
+
+    // Метод для обработки столкновения с другим шаром
+    void handleCollision(Ball& other)
+    {
+        sf::Vector2f delta = shape.getPosition() - other.shape.getPosition();
+        float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+
+        // Проверка на столкновение
+        if (distance < shape.getRadius() + other.shape.getRadius())
+        {
+            // Нормализуем вектор расстояния
+            delta /= distance;
+
+            // Обновляем скорости
+            float v1 = (velocity.x * delta.x + velocity.y * delta.y);
+            float v2 = (other.velocity.x * delta.x + other.velocity.y * delta.y);
+
+            // Обновление скоростей с учетом упругого столкновения
+            float newVxA = velocity.x - (v1 - v2) * RESTITUTION_COEFFICIENT * delta.x;
+            float newVyA = velocity.y - (v1 - v2) * RESTITUTION_COEFFICIENT * delta.y;
+
+            float newVxB = other.velocity.x + (v1 - v2) * RESTITUTION_COEFFICIENT * delta.x;
+            float newVyB = other.velocity.y + (v1 - v2) * RESTITUTION_COEFFICIENT * delta.y;
+
+            velocity.x = newVxA;
+            velocity.y = newVyA;
+            other.velocity.x = newVxB;
+            other.velocity.y = newVyB;
+
+            // Переместим шары, чтобы избежать залипания
+            float overlap = (shape.getRadius() + other.shape.getRadius()) - distance;
+            shape.move(delta * (overlap / 2));
+            other.shape.move(-delta * (overlap / 2));
+        }
+    }
 };
 
-void handleCollision(Ball& ball1, Ball& ball2) 
-{
-	sf::Vector2f delta = ball1.shape.getPosition() - ball2.shape.getPosition();
-	float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+int main() {
+    srand(static_cast<unsigned int>(time(0))); // Инициализация генератора случайных чисел
 
-	if (distance < 2 * BALL_RADIUS) 
-	{
-		// Нормализуем вектор расстояния
-		delta /= distance;
+    sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Balls Simulation");
 
-		// Обновляем скорости
-		float v1 = (ball1.velocity.x * delta.x + ball1.velocity.y * delta.y);
-		float v2 = (ball2.velocity.x * delta.x + ball2.velocity.y * delta.y);
+    int numberOfBalls = rand() % 14 + 2; // Генерация количества шаров
 
-		ball1.velocity -= v1 * delta;
-		ball2.velocity -= v2 * delta;
+    std::vector<Ball> balls;
 
-		// Переместим шары, чтобы избежать залипания
-		float overlap = 2 * BALL_RADIUS - distance;
-		ball1.shape.move(delta * (overlap / 2));
-		ball2.shape.move(-delta * (overlap / 2));
-	}
-}
+    for (int i = 0; i < numberOfBalls; ++i)
+    {
+        float radius = rand() % 30 + 20; // Случайный радиус от 20 до 50
+        float x = rand() % (WINDOW_WIDTH - static_cast<int>(radius * 2)) + radius; // Случайная позиция X
+        float y = rand() % (WINDOW_HEIGHT - static_cast<int>(radius * 2)) + radius; // Случайная позиция Y
+        sf::Color color(rand() % 256, rand() % 256, rand() % 256); // Случайный цвет
 
-int main() 
-{
-	srand(static_cast<unsigned int>(time(0))); // Инициализация генератора случайных чисел
+        balls.emplace_back(x, y, radius, color); // Создание нового шара
+    }
 
-	sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Balls Simulation");
+    while (window.isOpen())
+    {
+        sf::Event event;
+        while (window.pollEvent(event))
+        {
+            if (event.type == sf::Event::Closed)
+            {
+                window.close();
+            }
+        }
 
-	Ball ball1(WINDOW_WIDTH / 4, WINDOW_HEIGHT / 2, rand() % 10 + 1, rand() % 10 + 1, sf::Color(255, 0, 255));
-	Ball ball2(WINDOW_WIDTH / 4 * 3, WINDOW_HEIGHT / 2, rand() % 10 + 1, rand() % 10 + 1, sf::Color(255, 255, 0));
+        for (auto& ball : balls)
+        {
+            ball.update();
+        }
 
-	while (window.isOpen()) 
-	{
-		sf::Event event;
-		while (window.pollEvent(event)) 
-		{
-			if (event.type == sf::Event::Closed || (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Escape)) 
-			{
-				window.close();
-			}
-		}
+        for (size_t i = 0; i < balls.size(); i++)
+        {
+            for (size_t j = i + 1; j < balls.size(); j++)
+            {
+                balls[i].handleCollision(balls[j]);
+            }
+        }
 
-		ball1.update();
-		ball2.update();
+        window.clear();
 
-		handleCollision(ball1, ball2);
+        for (auto& ball : balls)
+        {
+            ball.draw(window);
+        }
 
-		window.clear();
+        window.display();
 
-		ball1.draw(window);
-		ball2.draw(window);
+        sf::sleep(sf::milliseconds(1000 / 144)); // Ограничение FPS до 144
+    }
 
-		window.display();
-
-		sf::sleep(sf::milliseconds(1000 / 144)); // Ограничение FPS до 144
-	}
-
-	return 0;
+    return 0;
 }
